@@ -142,7 +142,8 @@ const shellFunc = `cdw() {
   esac
   local dir
   dir="$(command cdw "$@")" || return
-  cd -- "$dir"
+  # builtin: bypass cd wrappers like ` + "`zoxide init --cmd cd`" + `
+  builtin cd -- "$dir"
 }
 `
 
