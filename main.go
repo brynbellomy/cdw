@@ -46,10 +46,8 @@ func run(args []string) error {
 		if err != nil {
 			return nil
 		}
-		for _, wt := range wts {
-			if wt.branch != "" {
-				fmt.Println(wt.branch)
-			}
+		for _, c := range completions(wts, args[1:]) {
+			fmt.Println(c)
 		}
 		return nil
 
@@ -74,6 +72,38 @@ func run(args []string) error {
 		}
 	}
 	return fmt.Errorf("no worktree has branch %q checked out", branch)
+}
+
+// completions returns the branch names matching the word being completed,
+// best match first. args is `[--bash] [word]`.
+//
+// With --bash, the result is adjusted for readline, which replaces the word
+// on the line with the longest common prefix of the candidates. When that
+// prefix would discard part of what was typed, the word itself is added as a
+// candidate so the common prefix collapses to nothing and readline leaves the
+// line alone.
+func completions(wts []worktree, args []string) []string {
+	bash := len(args) > 0 && args[0] == "--bash"
+	if bash {
+		args = args[1:]
+	}
+	var word string
+	if len(args) > 0 {
+		word = args[0]
+	}
+
+	var branches []string
+	for _, wt := range wts {
+		if wt.branch != "" {
+			branches = append(branches, wt.branch)
+		}
+	}
+	matches := fuzzyFilter(word, branches)
+
+	if bash && len(matches) > 1 && !isSubsequence(word, commonPrefix(matches)) {
+		matches = append(matches, word)
+	}
+	return matches
 }
 
 // listWorktrees returns the worktrees of the git repo containing the current
@@ -155,7 +185,7 @@ _cdw_complete() {
     return
   fi
   local IFS=$'\n'
-  COMPREPLY=($(compgen -W "$(command cdw __complete 2>/dev/null)" -- "$cur"))
+  COMPREPLY=($(command cdw __complete --bash "$cur" 2>/dev/null))
 }
 complete -o nosort -F _cdw_complete cdw 2>/dev/null || complete -F _cdw_complete cdw
 `
@@ -163,9 +193,20 @@ complete -o nosort -F _cdw_complete cdw 2>/dev/null || complete -F _cdw_complete
 const zshInit = shellFunc + `
 _cdw() {
   (( CURRENT == 2 )) || return
+  setopt localoptions extendedglob
+  local word="$PREFIX$SUFFIX"
   local -a branches
-  branches=("${(@f)$(command cdw __complete 2>/dev/null)}")
-  compadd -a branches
+  branches=(${(f)"$(command cdw __complete "$word" 2>/dev/null)"})
+  # -U: the candidates are already fuzzy-filtered, so zsh must not re-filter
+  # them by prefix. -V: keep the best-match-first order.
+  compadd -U -V cdw -a branches
+  # zsh replaces the word with the candidates' common prefix. Only allow that
+  # when the prefix still fuzzy-matches the word; otherwise just list.
+  local pat="*${(j:*:)${(@b)${(s::)word}}}*"
+  [[ $word == *[[:upper:]]* ]] || pat="(#i)$pat"
+  if (( compstate[nmatches] > 1 )) && [[ $compstate[unambiguous] != ${~pat} ]]; then
+    compstate[insert]=
+  fi
 }
 if (( $+functions[compdef] )); then
   compdef _cdw cdw

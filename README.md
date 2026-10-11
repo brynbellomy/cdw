@@ -6,7 +6,12 @@
 cdw feature/login   # jumps to whichever worktree has feature/login checked out
 cdw main            # back to the main checkout
 cdw <TAB>           # completes branch names of the current repo's worktrees
+cdw gout<TAB>       # fuzzy: completes to feature/logout
 ```
+
+Completion is fuzzy: the typed characters only need to appear in order
+somewhere in the branch name, and the best matches are listed first. It's
+case-insensitive unless the typed text contains an uppercase letter.
 
 Works from anywhere inside the repo, including from inside another worktree.
 
